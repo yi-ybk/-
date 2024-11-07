@@ -3,7 +3,9 @@
 #include <geometry_msgs/Twist.h>
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
+#include <sensor_msgs/LaserScan.h>
 
+/*******全局变量定义区********/
 /*初始化*/
 double target_A_x = 0.55;
 double target_A_y = -0.49;
@@ -13,20 +15,27 @@ double current_x = 0;
 double current_y = 0;
 double current_yaw = 0;
 double target_yaw = -M_PI/2;
+double distance_to_stop = 0.3;
+double front_distance;
 bool goal_reached_A = false;
 bool goal_reached_B = false;
 bool goal_yaw_A = false;
 geometry_msgs::Twist twist;
+/***************************/
 
+/******函数声明区*******/
+void scancallback(const sensor_msgs::LaserScan::ConstPtr& msg);
 double quat_to_yaw(const geometry_msgs::Quaternion& quat);
 void odomcallback(const nav_msgs::Odometry& msg);
+/*********************/
 
 int main(int argc, char **argv){
   ros::init(argc, argv, "move_node");
   ros::NodeHandle n;
 
   ros::Publisher pub = n.advertise<geometry_msgs::Twist>("cmd_vel", 10);
-  ros::Subscriber sub = n.subscribe("/odom", 10, odomcallback);
+  ros::Subscriber odom_sub = n.subscribe("/odom", 10, odomcallback);
+  ros::Subscriber scan_sub = n.subscribe("scan", 10, scancallback);
   ros::Rate loop_rate(10);
 
   while (ros::ok()){
@@ -78,24 +87,25 @@ void odomcallback(const nav_msgs::Odometry& msg){
       goal_yaw_A = true;
     }
   }
+}
 
-  /*转向完成后向B点出发*/
-  else if(goal_reached_B == false && current_y > target_B_y){
-    twist.linear.x = 0.2;
-    twist.linear.y = 0;
-    twist.linear.z = 0;
-    twist.angular.x = 0;
-    twist.angular.y = 0;
-    twist.angular.z = 0;
-    /*置新到达B点的状态*/
-    if(current_y <= target_B_y){
+void scancallback(const sensor_msgs::LaserScan::ConstPtr& msg){
+  front_distance = msg->ranges[0];
+  ROS_INFO("距离 = %lf", front_distance);
+
+  if(front_distance <= distance_to_stop ){
       goal_reached_B = true;
-    }
+      twist.linear.x = 0;
+      twist.linear.y = 0;
+      twist.linear.z = 0;
+      twist.angular.x = 0;
+      twist.angular.y = 0;
+      twist.angular.z = 0;
   }
 
-  /*到达B点后停止*/
-  else{
-    twist.linear.x = 0;
+  /*剩余0.3m时停止*/
+  else if(goal_reached_B == false){
+    twist.linear.x = 0.2;
     twist.linear.y = 0;
     twist.linear.z = 0;
     twist.angular.x = 0;
@@ -103,3 +113,5 @@ void odomcallback(const nav_msgs::Odometry& msg){
     twist.angular.z = 0;
   }
 }
+
+
